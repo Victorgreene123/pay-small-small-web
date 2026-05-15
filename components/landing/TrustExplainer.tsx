@@ -46,7 +46,10 @@ export default function TrustExplainer() {
   const [expanded, setExpanded] = useState<number | null>(0);
 
   return (
-    <section id="trust" className="relative py-20 sm:py-32 px-4 sm:px-6 bg-white">
+    <section
+      id="trust"
+      className="relative py-20 sm:py-32 px-4 sm:px-6 bg-white"
+    >
       <div className="max-w-4xl mx-auto">
         {/* Section header */}
         <div className="mb-16 text-center">

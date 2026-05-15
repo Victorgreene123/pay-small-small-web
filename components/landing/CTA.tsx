@@ -13,7 +13,10 @@ const benefits = [
 
 export default function CTA() {
   return (
-    <section id="get-started" className="relative py-20 sm:py-32 px-4 sm:px-6 bg-linear-to-b from-[#F4F8FF] to-white overflow-hidden">
+    <section
+      id="get-started"
+      className="relative py-20 sm:py-32 px-4 sm:px-6 bg-linear-to-b from-[#F4F8FF] to-white overflow-hidden"
+    >
       {/* Decorative elements */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-[#22C55E]/3 rounded-full blur-3xl -mr-40 -mt-40" />
@@ -59,22 +62,35 @@ export default function CTA() {
             <div className="bg-linear-to-br from-[#0D1B2A] to-[#1a2b3a] rounded-[2.5rem] p-10 text-white relative overflow-hidden">
               <div className="absolute -top-20 -right-20 w-40 h-40 bg-[#22C55E]/10 rounded-full blur-3xl" />
               <div className="relative z-10">
-                <p className="text-xs font-black text-[#22C55E] uppercase tracking-widest mb-3">Power of Trust</p>
-                <h3 className="text-2xl font-black mb-4 leading-tight">AI-verified group payments</h3>
-                <p className="text-sm text-slate-300 mb-6">Transparent verification, instant status, and clear payout signals so communities can move money with confidence.</p>
+                <p className="text-xs font-black text-[#22C55E] uppercase tracking-widest mb-3">
+                  Power of Trust
+                </p>
+                <h3 className="text-2xl font-black mb-4 leading-tight">
+                  AI-verified group payments
+                </h3>
+                <p className="text-sm text-slate-300 mb-6">
+                  Transparent verification, instant status, and clear payout
+                  signals so communities can move money with confidence.
+                </p>
 
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
                     <CheckCircle2 className="w-5 h-5 text-[#22C55E] shrink-0" />
-                    <span className="text-sm font-medium text-white">AI verification layer</span>
+                    <span className="text-sm font-medium text-white">
+                      AI verification layer
+                    </span>
                   </div>
                   <div className="flex items-center gap-3">
                     <CheckCircle2 className="w-5 h-5 text-[#22C55E] shrink-0" />
-                    <span className="text-sm font-medium text-white">Real-time contribution status</span>
+                    <span className="text-sm font-medium text-white">
+                      Real-time contribution status
+                    </span>
                   </div>
                   <div className="flex items-center gap-3">
                     <CheckCircle2 className="w-5 h-5 text-[#22C55E] shrink-0" />
-                    <span className="text-sm font-medium text-white">Payouts that follow clear rules</span>
+                    <span className="text-sm font-medium text-white">
+                      Payouts that follow clear rules
+                    </span>
                   </div>
                 </div>
               </div>
