@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { CheckCircle2, Sparkles } from 'lucide-react';
+import { CheckCircle2, Sparkles } from "lucide-react";
 
 export default function PaymentSuccessPage() {
   return (
@@ -12,9 +12,12 @@ export default function PaymentSuccessPage() {
               <CheckCircle2 className="h-10 w-10" />
             </div>
 
-            <h1 className="text-3xl font-black text-[#0D1B2A]">Payment confirmed</h1>
-            <p className="max-w-xl text-slate-500">Thank you. Your payment has been received and confirmed. </p>
-
+            <h1 className="text-3xl font-black text-[#0D1B2A]">
+              Payment confirmed
+            </h1>
+            <p className="max-w-xl text-slate-500">
+              Thank you. Your payment has been received and confirmed.{" "}
+            </p>
           </div>
         </div>
       </div>
