@@ -10,10 +10,13 @@ import {
   CreditCard,
   Building,
   ChevronDown,
+  Loader2,
+  CheckCircle2,
 } from 'lucide-react';
 import { apiFetch } from '../../../../lib/api-client';
 import { useAlert } from '../../../../hooks/useAlert';
 import { BankAccount } from '../../../../types/bank';
+import { SUPPORTED_BANKS, BankEntry } from '../../../../lib/bank-list';
 
 interface BankInfo {
   id: number;
@@ -42,8 +45,10 @@ interface BanksApiResponse {
 
 export default function BanksPage() {
   const [banks, setBanks] = useState<BankAccount[]>([]);
-  const [availableBanks, setAvailableBanks] = useState<BankInfo[]>([]);
+  const [availableBanks] = useState<BankEntry[]>(SUPPORTED_BANKS);
   const [loading, setLoading] = useState(true);
+  const [isResolving, setIsResolving] = useState(false);
+  const [isVerified, setIsVerified] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingBank, setEditingBank] = useState<BankAccount | null>(null);
   const [bankSearch, setBankSearch] = useState('');
@@ -85,26 +90,36 @@ export default function BanksPage() {
     }
   }, [showAlert]);
 
-  const fetchAvailableBanks = useCallback(async () => {
-    try {
-      const res = await apiFetch<BanksApiResponse | BankInfo[]>('/payments/banks');
-
-      if (res && !Array.isArray(res) && Array.isArray((res as BanksApiResponse).data)) {
-        setAvailableBanks((res as BanksApiResponse).data);
-      } else if (Array.isArray(res)) {
-        setAvailableBanks(res as BankInfo[]);
-      } else {
-        console.error('Unexpected bank list response shape:', res);
-      }
-    } catch (error: unknown) {
-      console.error('Failed to fetch bank list:', error);
-    }
-  }, []);
-
   useEffect(() => {
     fetchBanks();
-    fetchAvailableBanks();
-  }, [fetchBanks, fetchAvailableBanks]);
+  }, [fetchBanks]);
+
+  const resolveAccount = async (bankCode: string, accountNumber: string) => {
+    if (accountNumber.length !== 10 || !bankCode) return;
+
+    try {
+      setIsResolving(true);
+      setIsVerified(false);
+      const res = await apiFetch<{ account_name: string , account_number: string}>('/banks/resolve', {
+        method: 'POST',
+        body: JSON.stringify({ bankCode, accountNumber }),
+      });
+
+      console.log(res)
+
+      if ( res?.account_name) {
+        setFormData((prev) => ({ ...prev, accountName: res.account_name }));
+        setIsVerified(true);
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Could not verify account details';
+      showAlert('error', message);
+      setFormData((prev) => ({ ...prev, accountName: '' }));
+      setIsVerified(false);
+    } finally {
+      setIsResolving(false);
+    }
+  };
 
   const resetForm = () => {
     setFormData({
@@ -116,11 +131,14 @@ export default function BanksPage() {
     });
     setBankSearch('');
     setShowBankDropdown(false);
+    setIsVerified(false);
+    setIsResolving(false);
   };
 
   const handleOpenModal = (bank?: BankAccount) => {
     if (bank) {
       setEditingBank(bank);
+      setIsVerified(true); // Pre-existing banks are considered verified
       setFormData({
         bankName: bank.bankName,
         accountNumber: bank.accountNumber,
@@ -132,6 +150,7 @@ export default function BanksPage() {
       setBankSearch(bank.bankName);
     } else {
       setEditingBank(null);
+      setIsVerified(false);
       resetForm();
     }
     setShowModal(true);
@@ -140,6 +159,7 @@ export default function BanksPage() {
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingBank(null);
+    setIsVerified(false);
     resetForm();
   };
 
@@ -184,6 +204,12 @@ export default function BanksPage() {
     // Only allow digits
     const value = e.target.value.replace(/\D/g, '');
     setFormData((prev) => ({ ...prev, accountNumber: value }));
+
+    if (value.length === 10 && formData.code) {
+      resolveAccount(formData.code, value);
+    } else {
+      setIsVerified(false);
+    }
   };
 
   const filteredBanks = availableBanks.filter((b) =>
@@ -364,6 +390,9 @@ export default function BanksPage() {
                                 }));
                                 setBankSearch(b.name);
                                 setShowBankDropdown(false);
+                                if (formData.accountNumber.length === 10) {
+                                  resolveAccount(b.code, formData.accountNumber);
+                                }
                               }}
                             >
                               <span className="font-bold text-[#0D1B2A]">{b.name}</span>
@@ -383,16 +412,24 @@ export default function BanksPage() {
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
                       Account Number
                     </label>
-                    <input
-                      required
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={10}
-                      placeholder="0000000000"
-                      className="w-full px-6 py-4 bg-[#F4F8FF] border-2 border-transparent focus:border-[#22C55E] focus:bg-white rounded-2xl outline-none transition-all font-bold text-[#0D1B2A] tracking-[0.2em]"
-                      value={formData.accountNumber}
-                      onChange={handleAccountNumberChange}
-                    />
+                    <div className="relative">
+                      <input
+                        required
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={10}
+                        placeholder="0000000000"
+                        className="w-full px-6 py-4 bg-[#F4F8FF] border-2 border-transparent focus:border-[#22C55E] focus:bg-white rounded-2xl outline-none transition-all font-bold text-[#0D1B2A] tracking-[0.2em]"
+                        value={formData.accountNumber}
+                        onChange={handleAccountNumberChange}
+                      />
+                      {isResolving && (
+                        <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#22C55E] animate-spin" />
+                      )}
+                      {isVerified && !isResolving && (
+                        <CheckCircle2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#22C55E]" />
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
@@ -400,9 +437,14 @@ export default function BanksPage() {
                     </label>
                     <input
                       required
+                      readOnly={isVerified || isResolving}
                       type="text"
                       placeholder="John Doe"
-                      className="w-full px-6 py-4 bg-[#F4F8FF] border-2 border-transparent focus:border-[#22C55E] focus:bg-white rounded-2xl outline-none transition-all font-bold text-[#0D1B2A] uppercase"
+                      className={`w-full px-6 py-4 border-2 border-transparent rounded-2xl outline-none transition-all font-bold text-[#0D1B2A] uppercase ${
+                        isVerified || isResolving 
+                          ? 'bg-[#22C55E]/5 border-[#22C55E]/20 text-[#22C55E]' 
+                          : 'bg-[#F4F8FF] focus:border-[#22C55E] focus:bg-white'
+                      }`}
                       value={formData.accountName}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                         setFormData((prev) => ({ ...prev, accountName: e.target.value }))
@@ -432,10 +474,15 @@ export default function BanksPage() {
 
                 <div className="pt-4">
                   <button
+                    disabled={!isVerified || isResolving}
                     type="submit"
-                    className="w-full bg-[#0D1B2A] text-[#22C55E] py-5 rounded-[1.5rem] font-black uppercase tracking-widest text-xs hover:shadow-2xl hover:shadow-[#0D1B2A]/30 transition-all active:scale-95"
+                    className={`w-full py-5 rounded-[1.5rem] font-black uppercase tracking-widest text-xs transition-all active:scale-95 ${
+                      !isVerified || isResolving
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : 'bg-[#0D1B2A] text-[#22C55E] hover:shadow-2xl hover:shadow-[#0D1B2A]/30'
+                    }`}
                   >
-                    {editingBank ? 'Save Changes' : 'Add Bank Account'}
+                    {isResolving ? 'Verifying...' : editingBank ? 'Save Changes' : 'Add Bank Account'}
                   </button>
                 </div>
               </form>

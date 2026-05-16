@@ -39,11 +39,54 @@ export default function SplitWalletPage({ params }: WalletPageProps) {
   const [withdrawAmount, setWithdrawAmount] = useState<string>('');
   const [withdrawDescription, setWithdrawDescription] = useState<string>('');
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  
+  // Payout tracking states
+  const [pendingReference, setPendingReference] = useState<string | null>(null);
+  const [payoutStatus, setPayoutStatus] = useState<'pending' | 'success' | 'failed' | null>(null);
+  const [bankReference, setBankReference] = useState<string | null>(null);
 
   useEffect(() => {
     fetchWalletData();
     fetchBanks();
   }, [shareCode]);
+
+  // Polling for payout status
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    let attempts = 0;
+    const maxAttempts = 12; // 60 seconds (5s * 12)
+
+    if (pendingReference && payoutStatus === 'pending') {
+      interval = setInterval(async () => {
+        try {
+          attempts++;
+          const res = await apiFetch<any>(`/payments/payout/status/${pendingReference}`);
+          
+          if (res?.data?.transaction_status === 'success') {
+            setPayoutStatus('success');
+            clearInterval(interval);
+            showAlert('success', 'Withdrawal successful!');
+            fetchWalletData();
+          } else if (res?.data?.transaction_status === 'failed' || res?.data?.transaction_status === 'reversed') {
+            setPayoutStatus('failed');
+            clearInterval(interval);
+            showAlert('error', `Withdrawal failed: ${res?.data?.response_description || 'Unknown error'}`);
+          } else if (attempts >= maxAttempts) {
+            clearInterval(interval);
+            setPayoutStatus(null);
+            setPendingReference(null);
+            showAlert('info', 'Withdrawal is taking longer than expected. Please check back later.');
+          }
+        } catch (error) {
+          console.error('Status check failed', error);
+        }
+      }, 5000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [pendingReference, payoutStatus]);
 
   const fetchWalletData = async () => {
     try {
@@ -77,7 +120,7 @@ export default function SplitWalletPage({ params }: WalletPageProps) {
 
   const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!wallet || !withdrawAmount || !selectedBankId) return;
+    if (!wallet || !selectedBankId || !withdrawAmount) return;
     
     const amount = parseFloat(withdrawAmount);
     if (amount <= 0 || amount > wallet.balance) {
@@ -87,23 +130,27 @@ export default function SplitWalletPage({ params }: WalletPageProps) {
 
     try {
       setWithdrawing(true);
-      await apiFetch(`/wallets/${split.id}/spend`, {
+      const res = await apiFetch<any>('/payments/payout', {
         method: 'POST',
         body: JSON.stringify({
-          amount,
+          splitId: split.id,
           bankId: selectedBankId,
-          description: withdrawDescription || `Withdrawal from ${split.title}`
+          amount: amount, // Explicitly send the selected amount
         })
       });
       
-      showAlert('success', 'Withdrawal request submitted successfully');
-      setShowWithdrawModal(false);
-      setWithdrawAmount('');
-      setWithdrawDescription('');
-      fetchWalletData(); // Refresh wallet tools
+      if (res?.success) {
+        setPendingReference(res.data.transaction_reference);
+        setBankReference(res.data.nip_transaction_reference);
+        setPayoutStatus('pending');
+        setWithdrawAmount('');
+        setWithdrawDescription('');
+      } else {
+        throw new Error(res?.message || 'Failed to initiate payout');
+      }
     } catch (error: any) {
+      console.error('Withdrawal error:', error);
       showAlert('error', error.message || 'Withdrawal failed');
-    } finally {
       setWithdrawing(false);
     }
   };
@@ -233,117 +280,175 @@ export default function SplitWalletPage({ params }: WalletPageProps) {
       {/* Withdrawal Modal */}
       {showWithdrawModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-          <div className="absolute inset-0 bg-[#0D1B2A]/60 backdrop-blur-sm" onClick={() => !withdrawing && setShowWithdrawModal(false)} />
+          <div className="absolute inset-0 bg-[#0D1B2A]/60 backdrop-blur-sm" onClick={() => (!withdrawing && !payoutStatus) && setShowWithdrawModal(false)} />
           <div className="relative bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-8 sm:p-10">
-              <h3 className="text-3xl font-black text-[#0D1B2A] mb-2">Withdraw Funds</h3>
-              <p className="text-slate-500 font-medium mb-8">Ready to payout? Choose where you want the money sent.</p>
+              {payoutStatus ? (
+                <div className="text-center py-6">
+                  <div className="w-20 h-20 mx-auto mb-6 flex items-center justify-center relative">
+                    {payoutStatus === 'pending' ? (
+                      <>
+                        <div className="absolute inset-0 border-4 border-[#F4F8FF] border-t-[#22C55E] rounded-full animate-spin"></div>
+                        <Clock className="w-10 h-10 text-[#22C55E]" />
+                      </>
+                    ) : payoutStatus === 'success' ? (
+                      <div className="w-20 h-20 bg-[#22C55E]/10 rounded-full flex items-center justify-center">
+                        <CheckCircle2 className="w-12 h-12 text-[#22C55E]" />
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center">
+                        <AlertCircle className="w-12 h-12 text-red-500" />
+                      </div>
+                    )}
+                  </div>
 
-              <form onSubmit={handleWithdraw} className="space-y-6">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Choose Bank Account</label>
-                  {banks.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-3">
-                      {banks.map((bank) => (
-                        <button
-                          key={bank.id}
-                          type="button"
-                          onClick={() => setSelectedBankId(bank.id)}
-                          className={`flex items-center justify-between p-5 rounded-3xl border-2 transition-all text-left ${
-                            selectedBankId === bank.id 
-                              ? 'border-[#22C55E] bg-[#22C55E]/5' 
-                              : 'border-slate-100 hover:border-slate-200'
-                          }`}
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className={`p-3 rounded-xl ${selectedBankId === bank.id ? 'bg-[#22C55E] text-white' : 'bg-slate-100 text-slate-400'}`}>
-                              <Building2 className="w-5 h-5" />
-                            </div>
-                            <div>
-                              <p className="font-black text-[#0D1B2A] text-sm">{bank.bankName}</p>
-                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">**** {bank.accountNumber.slice(-4)}</p>
-                            </div>
-                          </div>
-                          {selectedBankId === bank.id && <CheckCircle2 className="w-5 h-5 text-[#22C55E]" />}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-6 bg-red-50 rounded-3xl border border-red-100 flex flex-col items-center text-center">
-                      <AlertCircle className="w-8 h-8 text-red-500 mb-3" />
-                      <p className="text-red-700 font-black text-xs uppercase tracking-widest mb-3">No Banks Found</p>
-                      <button 
-                        type="button"
-                        onClick={() => router.push('/dashboard/payments/banks')}
-                        className="text-red-500 font-bold text-xs underline underline-offset-4"
-                      >
-                        Add a bank account first
-                      </button>
+                  <h3 className="text-2xl font-black text-[#0D1B2A] mb-2">
+                    {payoutStatus === 'pending' ? 'Verification in Progress' : 
+                     payoutStatus === 'success' ? 'Withdrawal Successful!' : 'Withdrawal Failed'}
+                  </h3>
+                  
+                  <p className="text-slate-500 font-medium mb-8">
+                    {payoutStatus === 'pending' ? 'Connecting to bank network to confirm transaction...' : 
+                     payoutStatus === 'success' ? 'Funds have been dispatched to your bank account.' : 
+                     'There was an issue processing your payout. Please try again or contact support.'}
+                  </p>
+
+                  {(pendingReference || bankReference) && (
+                    <div className="bg-[#F4F8FF] rounded-2xl p-4 mb-8 text-left">
+                      {pendingReference && (
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ref ID</span>
+                          <span className="text-[10px] font-bold text-[#0D1B2A] font-mono">{pendingReference}</span>
+                        </div>
+                      )}
+                      {bankReference && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Bank Ref</span>
+                          <span className="text-[10px] font-bold text-[#0D1B2A] font-mono">{bankReference}</span>
+                        </div>
+                      )}
                     </div>
                   )}
-                </div>
 
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Withdrawal Amount</label>
-                  <div className="relative">
-                    <span className="absolute left-6 top-1/2 -translate-y-1/2 font-black text-[#22C55E] text-xl">₦</span>
-                    <input 
-                      required
-                      type="number"
-                      placeholder="0.00"
-                      max={wallet?.balance}
-                      className="w-full pl-12 pr-6 py-5 bg-[#F4F8FF] border-2 border-transparent focus:border-[#22C55E] focus:bg-white rounded-2xl outline-none transition-all font-black text-[#0D1B2A] text-xl"
-                      value={withdrawAmount}
-                      onChange={(e) => setWithdrawAmount(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex justify-between mt-2 px-1">
-                    <p className={`text-[10px] font-bold uppercase tracking-widest ${
-                      parseFloat(withdrawAmount) > (wallet?.balance || 0) ? 'text-red-500' : 'text-slate-400'
-                    }`}>
-                      {parseFloat(withdrawAmount) > (wallet?.balance || 0) 
-                        ? 'Insufficient balance' 
-                        : `Max: ₦${wallet?.balance.toLocaleString()}`}
-                    </p>
-                    <button 
-                      type="button"
-                      onClick={() => setWithdrawAmount(wallet?.balance.toString() || '0')}
-                      className="text-[10px] text-[#22C55E] font-black uppercase tracking-widest hover:underline"
-                    >
-                      Max Out
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Description (Optional)</label>
-                  <input 
-                    type="text"
-                    placeholder="What is this withdrawal for?"
-                    className="w-full px-6 py-4 bg-[#F4F8FF] border-2 border-transparent focus:border-[#22C55E] focus:bg-white rounded-2xl outline-none transition-all font-bold text-[#0D1B2A] text-sm"
-                    value={withdrawDescription}
-                    onChange={(e) => setWithdrawDescription(e.target.value)}
-                  />
-                </div>
-
-                <div className="pt-4 flex gap-4">
                   <button 
-                    type="button"
-                    onClick={() => setShowWithdrawModal(false)}
-                    disabled={withdrawing}
-                    className="flex-1 px-4 py-5 rounded-3xl font-black uppercase tracking-widest text-[10px] text-[#0D1B2A] hover:bg-slate-50 transition-colors"
+                    onClick={() => {
+                      if (payoutStatus === 'success' || payoutStatus === 'failed') {
+                        setShowWithdrawModal(false);
+                        setPayoutStatus(null);
+                        setPendingReference(null);
+                        setWithdrawing(false);
+                      }
+                    }}
+                    className={`w-full py-5 rounded-3xl font-black uppercase tracking-widest text-[10px] transition-all
+                      ${payoutStatus === 'pending' ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-[#0D1B2A] text-[#22C55E] hover:shadow-2xl active:scale-95'}
+                    `}
                   >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit"
-                    disabled={withdrawing || !selectedBankId || !withdrawAmount}
-                    className="flex-[2] bg-[#0D1B2A] text-[#22C55E] py-5 rounded-3xl font-black uppercase tracking-widest text-[10px] hover:shadow-2xl hover:shadow-[#0D1B2A]/30 transition-all active:scale-95 disabled:opacity-50"
-                  >
-                    {withdrawing ? 'Processing...' : 'Confirm Withdrawal'}
+                    {payoutStatus === 'pending' ? 'Waiting for Confirmation...' : 'Close Window'}
                   </button>
                 </div>
-              </form>
+              ) : (
+                <>
+                  <h3 className="text-3xl font-black text-[#0D1B2A] mb-2">Withdraw Funds</h3>
+                  <p className="text-slate-500 font-medium mb-8">Ready to payout? Choose where you want the money sent.</p>
+
+                  <form onSubmit={handleWithdraw} className="space-y-6">
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Choose Bank Account</label>
+                      {banks.length > 0 ? (
+                        <div className="grid grid-cols-1 gap-3">
+                          {banks.map((bank) => (
+                            <button
+                              key={bank.id}
+                              type="button"
+                              onClick={() => setSelectedBankId(bank.id)}
+                              className={`flex items-center justify-between p-5 rounded-3xl border-2 transition-all text-left ${
+                                selectedBankId === bank.id 
+                                  ? 'border-[#22C55E] bg-[#22C55E]/5' 
+                                  : 'border-slate-100 hover:border-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-4">
+                                <div className={`p-3 rounded-xl ${selectedBankId === bank.id ? 'bg-[#22C55E] text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                  <Building2 className="w-5 h-5" />
+                                </div>
+                                <div>
+                                  <p className="font-black text-[#0D1B2A] text-sm">{bank.bankName}</p>
+                                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">**** {bank.accountNumber.slice(-4)}</p>
+                                </div>
+                              </div>
+                              {selectedBankId === bank.id && <CheckCircle2 className="w-5 h-5 text-[#22C55E]" />}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-6 bg-red-50 rounded-3xl border border-red-100 flex flex-col items-center text-center">
+                          <AlertCircle className="w-8 h-8 text-red-500 mb-3" />
+                          <p className="text-red-700 font-black text-xs uppercase tracking-widest mb-3">No Banks Found</p>
+                          <button 
+                            type="button"
+                            onClick={() => router.push('/dashboard/payments/banks')}
+                            className="text-red-500 font-bold text-xs underline underline-offset-4"
+                          >
+                            Add a bank account first
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-[#F4F8FF] rounded-3xl p-6 border-2 border-[#22C55E]/10">
+                      <div className="flex justify-between items-center mb-4">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Available Balance</span>
+                        <span className="text-sm font-black text-[#0D1B2A]">₦{wallet?.balance.toLocaleString()}</span>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Withdrawal Amount</label>
+                        <div className="relative">
+                          <span className="absolute left-6 top-1/2 -translate-y-1/2 font-black text-[#22C55E] text-xl">₦</span>
+                          <input 
+                            required
+                            type="number"
+                            placeholder="0.00"
+                            min="100"
+                            max={wallet?.balance}
+                            className="w-full pl-12 pr-6 py-4 bg-white border-2 border-transparent focus:border-[#22C55E] rounded-2xl outline-none transition-all font-black text-[#0D1B2A] text-xl"
+                            value={withdrawAmount}
+                            onChange={(e) => setWithdrawAmount(e.target.value)}
+                          />
+                        </div>
+                        <div className="flex justify-between mt-2 px-1">
+                          <p className="text-[10px] text-slate-400 font-medium">Minimum withdrawal: ₦100</p>
+                          <button 
+                            type="button"
+                            onClick={() => setWithdrawAmount(wallet?.balance.toString() || '0')}
+                            className="text-[10px] text-[#22C55E] font-black uppercase tracking-widest hover:underline"
+                          >
+                            Withdraw All
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 flex gap-4">
+                      <button 
+                        type="button"
+                        onClick={() => setShowWithdrawModal(false)}
+                        disabled={withdrawing}
+                        className="flex-1 px-4 py-5 rounded-3xl font-black uppercase tracking-widest text-[10px] text-[#0D1B2A] hover:bg-slate-50 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        type="submit"
+                        disabled={withdrawing || !selectedBankId || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > (wallet?.balance || 0)}
+                        className="flex-[2] bg-[#0D1B2A] text-[#22C55E] py-5 rounded-3xl font-black uppercase tracking-widest text-[10px] hover:shadow-2xl hover:shadow-[#0D1B2A]/30 transition-all active:scale-95 disabled:opacity-50"
+                      >
+                        {withdrawing ? 'Initiating...' : 'Confirm Withdrawal'}
+                      </button>
+                    </div>
+                  </form>
+                </>
+              )}
             </div>
           </div>
         </div>

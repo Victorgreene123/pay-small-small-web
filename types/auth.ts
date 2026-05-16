@@ -51,6 +51,8 @@ export interface Split {
   _count?: {
     participants: number;
   };
+  trustScore?: number;
+  riskFlag?: boolean;
   createdAt: string;
 }
 

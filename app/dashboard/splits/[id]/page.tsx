@@ -14,7 +14,9 @@ import {
   ChevronRight,
   Plus,
   ClipboardList,
-  Wallet
+  Wallet,
+  ShieldCheck,
+  ShieldAlert
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api-client'
 import { useAlert } from '@/hooks/useAlert'
@@ -147,6 +149,11 @@ const SplitDetails = ({ params }: SplitDetailProps) => {
               <span className="px-4 py-1.5 rounded-full bg-[#F4F8FF] text-[#22C55E] text-[10px] font-black uppercase tracking-[0.2em]">
                 {split.splitType?.replace('_', ' ')} Split
               </span>
+              {split.riskFlag && (
+                <span className="px-4 py-1.5 rounded-full bg-red-50 text-red-500 text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5 border border-red-100">
+                  <ShieldAlert className="w-3 h-3" /> Flagged
+                </span>
+              )}
             </div>
 
             <h1 className="text-4xl sm:text-5xl font-black text-[#0D1B2A] leading-[1.1] mb-4">
@@ -202,6 +209,12 @@ const SplitDetails = ({ params }: SplitDetailProps) => {
                  <span className="text-5xl font-black text-[#0D1B2A]">
                    {split.totalAmount ? Math.round((split.wallet?.balance / split.totalAmount) * 100) : '0'}%
                  </span>
+                 {split.trustScore !== undefined && (
+                    <div className="flex items-center gap-1 mt-1">
+                       <ShieldCheck className="w-3 h-3 text-[#22C55E]" />
+                       <span className="text-[10px] font-black text-slate-400 mt-1">{split.trustScore}% TRUST</span>
+                    </div>
+                 )}
                </div>
             </div>
             <p className="text-[#0D1B2A] font-bold text-lg mb-1">

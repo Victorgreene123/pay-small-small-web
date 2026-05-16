@@ -9,6 +9,7 @@ import { SplitOverview } from '@/components/splits/SplitOverview';
 import { ParticipantList } from '@/components/splits/ParticipantList';
 import { DynamicForm } from '@/components/splits/DynamicForm';
 import { useAlert } from '@/hooks/useAlert';
+import { ShieldCheck, ShieldAlert, Lock } from 'lucide-react';
 
 export default function PublicSharePage() {
   const { link } = useParams();
@@ -129,6 +130,35 @@ export default function PublicSharePage() {
         </div>
 
         <SplitOverview split={split} isCreator={false} />
+
+        {/* Security & Trust Notice */}
+        <div className={`p-6 rounded-[2rem] border shadow-sm flex items-start gap-4 transition-all ${
+          split.riskFlag 
+            ? 'bg-red-50 border-red-100 text-red-900' 
+            : 'bg-emerald-50 border-emerald-100 text-emerald-900'
+        }`}>
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
+            split.riskFlag ? 'bg-red-500 text-white' : 'bg-[#22C55E] text-white'
+          }`}>
+            {split.riskFlag ? <ShieldAlert className="w-6 h-6" /> : <ShieldCheck className="w-6 h-6" />}
+          </div>
+          <div>
+            <h4 className="font-black text-xs uppercase tracking-widest mb-1 flex items-center gap-2">
+              {split.riskFlag ? 'Security Notice' : 'TrustLedger™ Verified'}
+              {!split.riskFlag && split.trustScore && split.trustScore >= 80 && (
+                <span className="bg-[#22C55E]/20 text-[#22C55E] px-2 py-0.5 rounded text-[8px] border border-[#22C55E]/10">High Reliability</span>
+              )}
+            </h4>
+            <p className="text-sm font-medium opacity-80 leading-relaxed">
+              {split.riskFlag 
+                ? "This transaction has been flagged for manual verification. Please ensure you are familiar with the organizer before proceeding."
+                : split.trustScore && split.trustScore >= 80
+                  ? "This tribe has a high reliability rating. Your contribution is protected by our automated secure collection protocol."
+                  : "Standard security protocols active. All payments are escrowed and handled according to the tribe's rules."
+              }
+            </p>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
           <div className="lg:col-span-2 space-y-8">

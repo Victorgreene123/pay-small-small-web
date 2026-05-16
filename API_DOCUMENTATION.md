@@ -216,3 +216,111 @@ Error responses typically follow this structure:
   "message": "Error details"
 }
 ```
+
+
+I have generated the frontend integration documentation for the TrustLedger Payout and Bank Account Lookup features. Use these endpoints to build the Withdrawal and Bank Management screens.
+
+***
+
+# TrustLedger Payout & Bank API Documentation
+
+## 1. Bank Account Lookup
+Use this before saving a bank account to verify that the account details are correct. This ensures funds are sent to the right person.
+
+- **Endpoint**: `POST /api/banks/resolve`
+- **Auth**: Required (JWT Bearer Token)
+- **Request Body**:
+```json
+{
+  "bankCode": "000013", // NIP Code (e.g., GTB is 000013)
+  "accountNumber": "0123456789"
+}
+```
+- **Success Response (200 OK)**:
+```json
+{
+  "success": true,
+  "data": {
+    "account_name": "JENNY SQUAD",
+    "account_number": "0123456789"
+  }
+}
+```
+
+---
+
+## 2. Initiate Withdrawal (Payout)
+Trigger this when a campaign creator wants to withdraw funds from their campaign wallet to their verified bank account.
+
+- **Endpoint**: `POST /api/payments/payout`
+- **Auth**: Required (JWT Bearer Token)
+- **Request Body**:
+```json
+{
+  "splitId": "clx...", // The ID of the campaign/split
+  "bankId": "clz..."   // The ID of the saved Bank record
+}
+```
+- **Success Response (200 OK)**:
+```json
+{
+  "success": true,
+  "message": "Payout initiated successfully",
+  "data": {
+    "transaction_reference": "TL_PK_171585...", // Unique ID for tracking
+    "nip_transaction_reference": "110059..."     // NIP Session ID for bank tracking
+  }
+}
+```
+- **Common Errors**:
+    - `400`: Insufficient wallet balance.
+    - `404`: Campaign not found or you are not the creator.
+
+---
+
+## 3. Check Payout Status
+Use this to re-query the status of a transfer if it shows as "pending" or if you need to confirm it reached the bank.
+
+- **Endpoint**: `GET /api/payments/payout/status/:reference`
+- **Auth**: Required (JWT Bearer Token)
+- **URL Parameter**: `reference` (The `transaction_reference` received during initiation)
+- **Success Response (200 OK)**:
+```json
+{
+  "success": true,
+  "data": {
+    "transaction_status": "success", // or 'failed', 'pending', 'reversed'
+    "amount": "10000",
+    "account_name": "JENNY SQUAD",
+    "response_description": "Approved or completed successfully"
+  }
+}
+```
+
+---
+
+## 4. List Payout History
+Retrieve all payouts initiated from the platform's Squad ledger.
+
+- **Endpoint**: `GET /api/payments/payout/list?page=1&perPage=10`
+- **Auth**: Required (JWT Bearer Token)
+- **Success Response (200 OK)**:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "transaction_reference": "TL_PK_...",
+      "amount_debited": "5000",
+      "transaction_status": "success",
+      "recipient": "John Doe",
+      "bank_code": "058"
+    }
+  ]
+}
+```
+
+### Implementation Notes for Frontend:
+1. **Currency**: All amounts sent to these APIs are in **Naira**. The backend handles the conversion to Kobo for the Squad API.
+2. **Merchant ID**: You do **not** need to worry about the `Merchant ID` prefix (e.g., `SBABCKDY_`); the backend automatically prepends this for compliance. 
+3. **Reference ID**: Always save the `transaction_reference` returned from the payout initiation for future status checks.
